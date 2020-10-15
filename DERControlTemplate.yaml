@@ -1,0 +1,309 @@
+Description: "Basic NotebookInstance test update to a different instance type"
+
+Parameters:
+  InstanceType:
+    Description: "The type of EC2 instance in use"
+    AllowedValues:
+      - "ml.t2.medium"
+      - "ml.m3.medium"
+      - "ml.m3.large"
+      - "ml.t3.large"
+      - "ml.p2.xlarge"
+      - "ml.m5.large"
+      - "ml.c3.large"
+      - "ml.r3.xlarge"
+    ConstraintDescription: "cannot be empty"
+    Type: String
+    Default: "ml.t2.medium"
+    
+  RoleArn:
+    Description: "ARN of the SageMaker IAM execution role. If you do not specify a role, a new role is created with AmazonSageMakerFullAccess managed policy and accesis provided to SageMakerS3Bucket, if provided."
+    Type: String
+    Default: "arn:aws:iam::440616111601:role/service-role/AmazonSageMaker-ExecutionRole-20200522T141912"
+
+
+  microgridId:
+    Description: "microgridId for the representative DER"
+    Type: String
+    Default: "IN-demo-dss-0001"
+    
+    
+  deviceId:
+    Description: "deviceId for the representative DER"
+    Type: String
+    Default: "demo-dss-001"
+ 
+ 
+  DERInputStream:
+    Description: "The destination stream for Kinesis Analytics"
+    Type: String
+    Default: "DERInputStream"
+ 
+ 
+  DEROutputStream:
+    Description: "The destination stream for Kinesis Analytics"
+    Type: String
+    Default: "DEROutputStream"
+ 
+ 
+Conditions: 
+  IAMRole:  !Not [ !Equals [ !Ref RoleArn, "" ]]
+  SourceStream: !Not [ !Equals [ !Ref DERInputStream, "" ]]
+  DestinationStream: !Not [ !Equals [ !Ref DEROutputStream, "" ]]
+
+Resources:
+  DERControlInstance:
+    Type: "AWS::SageMaker::NotebookInstance"
+    Properties:
+      InstanceType: !Ref "InstanceType"
+      RoleArn: !If [IAMRole, !Ref RoleArn, !GetAtt ExecutionRole.Arn]
+      VolumeSizeInGB : 10
+      DefaultCodeRepository : "https://github.com/villageenergy/DER-Control.git"
+  ExecutionRole: 
+    Type: "AWS::IAM::Role"
+    Properties: 
+      AssumeRolePolicyDocument: 
+        Version: "2012-10-17"
+        Statement: 
+          - 
+            Effect: "Allow"
+            Principal: 
+              Service: 
+                - "sagemaker.amazonaws.com"
+            Action: 
+              - "sts:AssumeRole"
+      Path: "/"
+      Policies: 
+        - 
+          PolicyName: "root"
+          PolicyDocument: 
+            Version: "2012-10-17"
+            Statement: 
+              - 
+                Effect: "Allow"
+                Action: "*"
+                Resource: "*"
+
+
+
+  DERControlKinesisAnalyticsApplication:
+    Type: AWS::KinesisAnalytics::Application
+    Properties:
+      ApplicationName: "RepresentativeDERControl"
+      ApplicationDescription: "Representative DER Control Application"
+      ApplicationCode: 
+        CREATE OR REPLACE STREAM "DESTINATION_SQL_STREAM"(
+            "deviceId" VARCHAR(16),
+            "microgridId"   VARCHAR(16),
+            "eventTime"     TIMESTAMP,
+
+            "DERstd10Sec"      DOUBLE,
+            "DERstd30Sec"      DOUBLE,
+            "DERstd1Min"       DOUBLE,
+            "DERstd2Min"       DOUBLE,
+            "DERstd5Min"       DOUBLE,
+
+            "Networkstd10Sec"    DOUBLE,
+            "Networkstd30Sec"    DOUBLE,
+            "Networkstd1Min"     DOUBLE,
+            "Networkstd2Min"     DOUBLE,
+            "Networkstd5Min"     DOUBLE,
+
+            "DEREnergy10Sec"     DOUBLE,
+            "networkEnergy10Sec" DOUBLE,
+            "DEREnergy30Sec"     DOUBLE,
+            "networkEnergy30Sec" DOUBLE,
+            "DEREnergy1Min"     DOUBLE,
+            "networkEnergy1Min" DOUBLE,
+            "DEREnergy2Min"     DOUBLE,
+            "networkEnergy2Min" DOUBLE,
+            "DEREnergy5Min"     DOUBLE,
+            "networkEnergy5Min" DOUBLE
+            );
+        CREATE OR REPLACE PUMP "STREAM_PUMP" AS
+            INSERT INTO "DESTINATION_SQL_STREAM" 
+                (
+                "deviceId",
+                "microgridId",
+                "eventTime",
+                "DERstd10Sec",
+                "DERstd30Sec",
+                "DERstd1Min",
+                "DERstd2Min",
+                "DERstd5Min",
+
+                "Networkstd10Sec",
+                "Networkstd30Sec",
+                "Networkstd1Min",
+                "Networkstd2Min",
+                "Networkstd5Min",
+
+                "DEREnergy10Sec",
+                "networkEnergy10Sec",
+                "DEREnergy30Sec",
+                "networkEnergy30Sec",
+                "DEREnergy1Min",
+                "networkEnergy1Min" ,
+                "DEREnergy2Min",
+                "networkEnergy2Min",
+                "DEREnergy5Min",
+                "networkEnergy5Min"
+                )
+        SELECT STREAM 
+            "deviceId",
+            "microgridId",
+            FLOOR("SOURCE_SQL_STREAM_001".ROWTIME TO SECOND) AS "eventTime",
+            (CASE WHEN "deviceType" = 'DER' THEN (STDDEV_SAMP("p") OVER lastTenSecond)      ELSE 0 END) AS "DERstd10Sec",
+            (CASE WHEN "deviceType" = 'DER' THEN (STDDEV_SAMP("p") OVER lastThirtySecond)   ELSE 0 END) AS "DERstd30Sec",
+            (CASE WHEN "deviceType" = 'DER' THEN (STDDEV_SAMP("p") OVER lastMinute)         ELSE 0 END) AS "DERstd1Min",
+            (CASE WHEN "deviceType" = 'DER' THEN (STDDEV_SAMP("p") OVER lastTwoMinute)      ELSE 0 END) AS "DERstd2Min",
+            (CASE WHEN "deviceType" = 'DER' THEN (STDDEV_SAMP("p") OVER lastFiveMinute)     ELSE 0 END) AS "DERstd5Min",
+
+            (CASE WHEN "deviceType" = 'NETWORK' THEN (STDDEV_SAMP("p") OVER lastTenSecond)      ELSE 0 END) AS "NETWORKstd10Sec",
+            (CASE WHEN "deviceType" = 'NETWORK' THEN (STDDEV_SAMP("p") OVER lastThirtySecond)   ELSE 0 END) AS "NETWORKstd30Sec",
+            (CASE WHEN "deviceType" = 'NETWORK' THEN (STDDEV_SAMP("p") OVER lastMinute)         ELSE 0 END) AS "NETWORKstd1Min",
+            (CASE WHEN "deviceType" = 'NETWORK' THEN (STDDEV_SAMP("p") OVER lastTwoMinute)      ELSE 0 END) AS "NETWORKstd2Min",
+            (CASE WHEN "deviceType" = 'NETWORK' THEN (STDDEV_SAMP("p") OVER lastFiveMinute)     ELSE 0 END) AS "NETWORKstd5Min",
+
+            (CASE WHEN "deviceType" = 'DER' THEN AVG("energy") OVER (RANGE INTERVAL '10' SECOND PRECEDING) ELSE -9.99 END) AS "DEREnergy10Sec",
+            (CASE WHEN "deviceType" = 'NETWORK' THEN AVG("energy") OVER (RANGE INTERVAL '10' SECOND PRECEDING) ELSE -9.99 END) AS "networkEnergy10Sec",
+            (CASE WHEN "deviceType" = 'DER' THEN AVG("energy") OVER (RANGE INTERVAL '30' SECOND PRECEDING) ELSE -9.99 END)  AS "DEREnergy30Sec",
+            (CASE WHEN "deviceType" = 'NETWORK' THEN AVG("energy") OVER (RANGE INTERVAL '30' SECOND PRECEDING) ELSE -9.99 END) AS "networkEnergy30Sec",
+            (CASE WHEN "deviceType" = 'DER' THEN AVG("energy") OVER (RANGE INTERVAL '1' MINUTE PRECEDING) ELSE -9.99 END)  AS "DEREnergy1Min",
+            (CASE WHEN "deviceType" = 'NETWORK' THEN AVG("energy") OVER (RANGE INTERVAL '1' Minute PRECEDING) ELSE -9.99 END) AS "networkEnergy1Min",
+            (CASE WHEN "deviceType" = 'DER' THEN AVG("energy") OVER (RANGE INTERVAL '2' MINUTE PRECEDING) ELSE -9.99 END) AS "DEREnergy2Min",
+            (CASE WHEN "deviceType" = 'NETWORK' THEN AVG("energy") OVER (RANGE INTERVAL '2' Minute PRECEDING) ELSE -9.99 END) AS "networkEnergy2Min",
+            (CASE WHEN "deviceType" = 'DER' THEN AVG("energy") OVER (RANGE INTERVAL '5' MINUTE PRECEDING) ELSE -9.99 END) AS "DEREnergy5Min",
+            (CASE WHEN "deviceType" = 'NETWORK' THEN AVG("energy") OVER (RANGE INTERVAL '5' Minute PRECEDING) ELSE -9.99 END) AS "networkEnergy5Min"
+
+        FROM "SOURCE_SQL_STREAM_001"
+            WHERE "microgridId" = 'IN-demo-dss-0001' and "deviceId" = 'demo-dss-001'
+
+            WINDOW
+                lastTenSecond       AS (PARTITION BY "deviceId" RANGE INTERVAL '10' SECOND PRECEDING),
+                lastThirtySecond    AS (PARTITION BY "deviceId" RANGE INTERVAL '30' SECOND PRECEDING),
+                lastMinute          AS (PARTITION BY "deviceId" RANGE INTERVAL '1' MINUTE PRECEDING),
+                lastTwoMinute       AS (PARTITION BY "deviceId" RANGE INTERVAL '2' MINUTE PRECEDING),
+                lastFiveMinute      AS (PARTITION BY "deviceId" RANGE INTERVAL '5' MINUTE PRECEDING);
+      Inputs:
+        - NamePrefix: "SOURCE_SQL_STREAM"
+          InputSchema:
+            RecordColumns:
+            - Name: "COL_start"
+              SqlType: "VARCHAR(16)"
+              Mapping: "$.COL_start"
+            - Name: "deviceId"
+              SqlType: "VARCHAR(32)"
+              Mapping: "$.deviceId"
+            - Name: "microgridId"
+              SqlType: "VARCHAR(16)"
+              Mapping: "$.microgridId"
+            - Name: "state"
+              SqlType: "VARCHAR(16)"
+              Mapping: "$.state"
+            - Name: "version"
+              SqlType: "VARCHAR(8)"
+              Mapping: "$.version"
+            - Name: "build"
+              SqlType: "VARCHAR(16)"
+              Mapping: "$.build"
+            - Name: "deviceType"
+              SqlType: "VARCHAR(8)"
+              Mapping: "$.deviceType"
+            - Name: "COL_interval"
+              SqlType: "INTEGER"
+              Mapping: "$.COL_interval"
+            - Name: "energy"
+              SqlType: "DOUBLE"
+              Mapping: "$.energy"
+            - Name: "frequency"
+              SqlType: "DOUBLE"
+              Mapping: "$.frequency"
+            - Name: "phaseAngle"
+              SqlType: "INTEGER"
+              Mapping: "$.phaseAngle"
+            - Name: "Irms"
+              SqlType: "DOUBLE"
+              Mapping: "$.Irms"
+            - Name: "Vrms"
+              SqlType: "DOUBLE"
+              Mapping: "$.Vrms"
+            - Name: "powerFactor"
+              SqlType: "DOUBLE"
+              Mapping: "$.powerFactor"
+            - Name: "pf"
+              SqlType: "DOUBLE"
+              Mapping: "$.pf"
+            - Name: "f"
+              SqlType: "DOUBLE"
+              Mapping: "$.f"
+            - Name: "p"
+              SqlType: "DOUBLE"
+              Mapping: "$.p"
+            - Name: "msgCounter"
+              SqlType: "INTEGER"
+              Mapping: "$.msgCounter"
+            - Name: "q"
+              SqlType: "INTEGER"
+              Mapping: "$.q"
+            - Name: "re"
+              SqlType: "DOUBLE"
+              Mapping: "$.re"
+            RecordFormat:
+              RecordFormatType: "JSON"
+              MappingParameters:
+                JSONMappingParameters:
+                  RecordRowPath: "$"
+          KinesisStreamsInput:
+            ResourceARN: !GetAtt InputKinesisStream.Arn
+            RoleARN: !GetAtt KinesisAnalyticsRole.Arn
+  InputKinesisStream:
+    Type: AWS::Kinesis::Stream
+    Properties:
+      Name: !Ref DERInputStream
+      ShardCount: 1
+  KinesisAnalyticsRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: kinesisanalytics.amazonaws.com
+            Action: "sts:AssumeRole"
+      Path: "/"
+      Policies:
+        - PolicyName: Open
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: "*"
+                Resource: "*"
+  BasicApplicationOutputs:
+    Type: AWS::KinesisAnalytics::ApplicationOutput
+    DependsOn: DERControlKinesisAnalyticsApplication
+    Properties:
+      ApplicationName: !Ref DERControlKinesisAnalyticsApplication
+      Output:
+        Name: "DESTINATION_SQL_STREAM"
+        DestinationSchema:
+          RecordFormatType: "JSON"
+        KinesisStreamsOutput:
+          ResourceARN: !GetAtt OutputKinesisStream.Arn
+          RoleARN: !GetAtt KinesisAnalyticsRole.Arn
+  OutputKinesisStream:
+    Type: AWS::Kinesis::Stream
+    Properties:
+      Name: !Ref DEROutputStream
+      ShardCount: 1
+  S3Bucket:
+    Type: AWS::S3::Bucket
+
+
+Outputs:
+  BasicNotebookInstanceId:
+    Value: !Ref DERControlInstance
+  ApplicationPhysicalResourceId:
+    Value: !Ref DERControlKinesisAnalyticsApplication
