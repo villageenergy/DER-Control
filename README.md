@@ -28,6 +28,6 @@ For now because the microgridId and deviceId for representative device are not p
 
 WHERE "microgridId" = 'IN-demo-dss-0001' and "deviceId" = 'demo-dss-001'
 
-# Sending and receiving MQTT messages to/from representative DER
+## Sending and receiving MQTT messages to/from representative DER
 
 The interaction with DER device will happen in SageMaker. This code should be added based on appropriate criteria.
