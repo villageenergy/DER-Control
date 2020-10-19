@@ -1,6 +1,6 @@
 # DER-Control
 
-## This stack creates the resources to interact with representative DER using Kinesis Analytics and collect the necessary data for trainig an ML model in SageMaker notebook.This data is stores it in s3.
+### This stack creates the resources to interact with representative DER using Kinesis Analytics and collect the necessary data for trainig an ML model in SageMaker notebook.This data is stores it in s3.
 
 A comprehensive .yaml file containing the template file for DER Control Test scenarios was created. Two main resources are created by creting this stack:
 
