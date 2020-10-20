@@ -35,3 +35,13 @@ The interaction with DER device will happen in SageMaker. This code should be ad
 In Kinesis Analytics, the input stream (DERInputStream) should be connected to Incoming stream from DER.
 
 The Kinesis Analytics OutputStream is connected to SageMaker. In case it is changed, the corresponding input for SageMaker should be corrected accordingly.
+
+## SageMaker parameters
+
+In sageMaker code, these parameters can be changed: Data will arrive into kineisDestinationStream from Kinesis Analytics and will be stored in s3 after process.
+
+bucketName = 'testsmdata2'
+
+prefix = 'DERTestData/'
+
+kineisDestinationStream = "DEROutputStream"
