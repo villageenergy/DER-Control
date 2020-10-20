@@ -33,4 +33,5 @@ WHERE "microgridId" = 'IN-demo-dss-0001' and "deviceId" = 'demo-dss-001'
 The interaction with DER device will happen in SageMaker. This code should be added based on appropriate criteria.
 
 In Kinesis Analytics, the input stream (DERInputStream) should be connected to Incoming stream from DER.
+
 The Kinesis Analytics OutputStream is connected to SageMaker. In case it is changed, the corresponding input for SageMaker should be corrected accordingly.
