@@ -10,6 +10,8 @@ A comprehensive .yaml file containing the template file for DER Control Test sce
  
 [derControlCode](DERControlTestScenarios-Prod.ipynb)
 
+### Template Default Values
+
 Some parameters are already set up to a default value. While creating a stack out of template file in AWS Cloudformation, they can be altered.
 
 DERInputStream:	DERInputStream	
